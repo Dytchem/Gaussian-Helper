@@ -1,9 +1,9 @@
 import re
 import sys
+import os
 
-sys.path.append("..")
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from Molecule import Molecule
-from . import *
 
 
 class opt_in:

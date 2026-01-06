@@ -1,9 +1,12 @@
 import os
 import datetime
 import random
+import sys
+
+sys.path.append("..")
 import argparse
-from opt_helper.opt_in import opt_in
-from opt_helper.opt_out import opt_out
+from opt_in import opt_in
+from opt_out import opt_out
 from Molecule import Molecule
 
 
