@@ -78,7 +78,7 @@ class Molecule:
     """
 
     _line_regex = re.compile(
-        r'^(?P<lead>\s*)(?P<sym>[A-Za-z]+)\s+'
+        r'^(?P<lead>\s*)(?P<sym>[A-Za-z]*)\s*'
         r'(?P<x>[+-]?\d+(?:\.\d+)?)\s+'
         r'(?P<y>[+-]?\d+(?:\.\d+)?)\s+'
         r'(?P<z>[+-]?\d+(?:\.\d+)?)\s*$'
@@ -172,41 +172,14 @@ class Molecule:
             x_s = x_s.rjust(col_widths[0])
             y_s = y_s.rjust(col_widths[1])
             z_s = z_s.rjust(col_widths[2])
-            line = f"{lead}{sym}  {x_s}   {y_s}   {z_s}"
+            if sym.strip() == '':
+                line = f"{lead}{x_s}   {y_s}   {z_s}"
+            else:
+                line = f"{lead}{sym}  {x_s}   {y_s}   {z_s}"
             lines.append(line)
         return "\n".join(lines)
 
-    # === 方法二：add 操作 ===
-    def add(self, delta_text: str) -> "Molecule":
-        """
-        逐元素相加操作。输入为 N 行，每行 3 个数值（不包含原子符号），例如：
-          0.00  -0.01   0.00
-          0.00   0.01   0.00
-          ...
-        行数必须与原子数一致，按顺序相加。
-        返回新的 Molecule 对象。
-        """
-        deltas: List[List[float]] = []
-        lines = [ln for ln in delta_text.splitlines() if ln.strip() != ""]
-        if len(lines) != self.n_atoms:
-            raise ValueError(f"add 输入行数({len(lines)})与原子数({self.n_atoms})不一致。")
-
-        for ln in lines:
-            # 允许任意空白分隔
-            parts = ln.strip().split()
-            if len(parts) != 3:
-                raise ValueError(f"add 行无法解析为 3 列：{ln!r}")
-            try:
-                deltas.append([float(parts[0]), float(parts[1]), float(parts[2])])
-            except Exception:
-                raise ValueError(f"add 行包含非数值内容：{ln!r}")
-
-        new_coords = []
-        for i in range(self.n_atoms):
-            new_coords.append(_add(self.coords[i], deltas[i]))
-        return self._new_with_coords(new_coords)
-
-    # === 方法一：重建坐标系（核心修正） ===
+    # === 坐标运算（支持像 NumPy 数组的运算） ===
     def reframe(
         self,
         i: int,
@@ -441,3 +414,66 @@ class Molecule:
             ]
 
         return self._new_with_coords([apply_R(r) for r in self.coords])
+
+    # === 运算符重载：支持像 NumPy 数组的逐元素运算 ===
+    def __add__(self, other):
+        if isinstance(other, Molecule):
+            if self.n_atoms != other.n_atoms:
+                raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
+            new_coords = [[a + b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+        elif isinstance(other, (int, float)):
+            new_coords = [[c + other for c in coord] for coord in self.coords]
+        else:
+            return NotImplemented
+        return self._new_with_coords(new_coords)
+
+    def __radd__(self, other):
+        return self.__add__(other)
+
+    def __sub__(self, other):
+        if isinstance(other, Molecule):
+            if self.n_atoms != other.n_atoms:
+                raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
+            new_coords = [[a - b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+        elif isinstance(other, (int, float)):
+            new_coords = [[c - other for c in coord] for coord in self.coords]
+        else:
+            return NotImplemented
+        return self._new_with_coords(new_coords)
+
+    def __rsub__(self, other):
+        if isinstance(other, (int, float)):
+            new_coords = [[other - c for c in coord] for coord in self.coords]
+            return self._new_with_coords(new_coords)
+        return NotImplemented
+
+    def __mul__(self, other):
+        if isinstance(other, Molecule):
+            if self.n_atoms != other.n_atoms:
+                raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
+            new_coords = [[a * b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+        elif isinstance(other, (int, float)):
+            new_coords = [[c * other for c in coord] for coord in self.coords]
+        else:
+            return NotImplemented
+        return self._new_with_coords(new_coords)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+
+    def __truediv__(self, other):
+        if isinstance(other, Molecule):
+            if self.n_atoms != other.n_atoms:
+                raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
+            new_coords = [[a / b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+        elif isinstance(other, (int, float)):
+            new_coords = [[c / other for c in coord] for coord in self.coords]
+        else:
+            return NotImplemented
+        return self._new_with_coords(new_coords)
+
+    def __rtruediv__(self, other):
+        if isinstance(other, (int, float)):
+            new_coords = [[other / c for c in coord] for coord in self.coords]
+            return self._new_with_coords(new_coords)
+        return NotImplemented
