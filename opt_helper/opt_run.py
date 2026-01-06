@@ -43,7 +43,8 @@ class opt_run:
                 in_file.molecule = out_file.final_molecule
         # to do:  more work on in_file
 
-    def default_pre_process(self, in_file):
+    @staticmethod
+    def default_pre_process(in_file):
         """
         默认前处理函数：重新定向坐标系，使原子 1->2 为 x 轴，原子 3 在 xz 平面。
         """
