@@ -1,6 +1,7 @@
 import os
 import datetime
 import random
+import argparse
 from opt_helper.opt_in import opt_in
 from opt_helper.opt_out import opt_out
 from Molecule import Molecule
@@ -60,3 +61,37 @@ class opt_run:
         默认前处理函数：重新定向坐标系，使原子 1->2 为 x 轴，原子 3 在 xz 平面。
         """
         in_file.molecule = in_file.molecule.reframe(1, 2, "x", 3, "z")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run Gaussian optimization.")
+    parser.add_argument("file_name", type=str, help="Base name of the input file")
+    parser.add_argument("in_file_root", type=str, help="Root directory for input files")
+    parser.add_argument(
+        "out_file_root", type=str, help="Root directory for output files"
+    )
+    parser.add_argument("epoch", type=int, help="Number of optimization epochs")
+    parser.add_argument(
+        "--update_coefficient",
+        type=float,
+        default=1.0,
+        help="Update coefficient (default: 1.0)",
+    )
+    parser.add_argument(
+        "--use_default_preprocess",
+        action="store_true",
+        help="Use default preprocessing function",
+    )
+
+    args = parser.parse_args()
+
+    pre_process = opt_run.default_pre_process if args.use_default_preprocess else None
+
+    opt_run(
+        file_name=args.file_name,
+        in_file_root=args.in_file_root,
+        out_file_root=args.out_file_root,
+        epoch=args.epoch,
+        update_coefficient=args.update_coefficient,
+        pre_process=pre_process,
+    )
