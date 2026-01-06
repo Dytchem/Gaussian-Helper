@@ -44,7 +44,7 @@ class opt_run:
                     )
             else:
                 print("Optimization did not terminate normally.")
-                in_file.molecule = out_file.final_molecule
+                in_file.molecule = 0 * in_file.molecule + out_file.final_molecule
         # to do:  more work on in_file
 
     @staticmethod
