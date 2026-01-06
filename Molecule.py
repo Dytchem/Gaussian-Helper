@@ -47,9 +47,16 @@ def _add(a: List[float], b: List[float]) -> List[float]:
     return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 
 
-def _scale(v: List[float], s: float) -> List[float]:
-    """标量乘法 s * v"""
-    return [v[0] * s, v[1] * s, v[2] * s]
+def _random_noncollinear(seed: Optional[int] = None) -> List[float]:
+    """
+    生成一个在 [-1,1]^3 的随机非零向量（用于构造与主轴不共线的辅助方向）。
+    """
+    rng = random.Random(seed)
+    for _ in range(100):
+        v = [rng.uniform(-1.0, 1.0) for _ in range(3)]
+        if _norm(v) > 1e-6:
+            return v
+    return [0.3, 0.5, -0.7]  # 兜底
 
 
 def _random_noncollinear(seed: Optional[int] = None) -> List[float]:
@@ -74,7 +81,7 @@ class Molecule:
     管理分子坐标的类。支持：
     - 从文本格式构造（固定原子数、符号与输出精度）。
     - 输出为同样风格的字符串（保留原始前导空白、按列对齐）。
-    - 坐标系重建（以 i->j 为新的 x/y/z 轴；可约束某原子落在指定平面并为指定轴的正方向）。
+    - 坐标系重建（以 i->j 为新的 x/y/z 轴；可约束某原子落在指定平面并为指定轴的正方向，确保 i,j,k 组成的平面平行于 axis 和 constraint_axis 张成的平面）。
     - 平移、旋转等几何变换。
     - 代数运算（+、-、*、/）支持逐元素运算，仅在有原子符号的位置符号匹配时允许 Molecule 间的运算（空符号忽略）。
 
@@ -153,8 +160,12 @@ class Molecule:
     def _new_with_coords(self, new_coords: List[List[float]]) -> "Molecule":
         if len(new_coords) != self.n_atoms:
             raise ValueError("新坐标的原子数与当前对象不一致。")
-        m = deepcopy(self)
-        m.coords = deepcopy(new_coords)
+        m = object.__new__(Molecule)
+        m.symbols = self.symbols
+        m.coords = new_coords
+        m.n_atoms = self.n_atoms
+        m.precision = self.precision
+        m.leading_ws = self.leading_ws
         return m
 
     # === 输出 ===
@@ -173,19 +184,14 @@ class Molecule:
             for row in self.coords
         ]
 
-        # 找到每列的最大字符串长度用于对齐
-        col_widths = [max(len(v[i]) for v in fmt_vals) for i in range(3)]
-
         # 组装每行
         lines = []
         for idx in range(self.n_atoms):
             lead = self.leading_ws[idx] if keep_leading_ws else ""
             sym = self.symbols[idx]
-            x_s, y_s, z_s = fmt_vals[idx]
-            # 右对齐每列
-            x_s = x_s.rjust(col_widths[0])
-            y_s = y_s.rjust(col_widths[1])
-            z_s = z_s.rjust(col_widths[2])
+            x_s = f"{self.coords[idx][0]:.{self.precision}f}"
+            y_s = f"{self.coords[idx][1]:.{self.precision}f}"
+            z_s = f"{self.coords[idx][2]:.{self.precision}f}"
             if sym.strip() == "":
                 line = f"{lead}{x_s}   {y_s}   {z_s}"
             else:
@@ -206,8 +212,7 @@ class Molecule:
         """
         将 i -> j 定义为新的 axis（'x' / 'y' / 'z'）轴正方向。
         必须提供 constraint_atom=k 与 constraint_axis=c（c ∈ {'x','y','z'} 且 c != axis），
-        原子 k 位于由 axis 与 c 张成的平面（即在剩余那一轴方向上坐标 = 0），
-        同时原子 k 在新坐标的 c 分量为正（若几何上该分量本来为 0，则保留为 0）。
+        使用 i,j,k 平面法向量确定剩余轴方向。
 
         说明：
         - 本方法只改变坐标系方向，不做平移（原坐标原点保持不变）。
@@ -224,9 +229,9 @@ class Molecule:
             raise ValueError("i 与 j 不可相同。")
 
         if constraint_axis is None:
-            raise ValueError("必须提供 constraint_axis 以指定三个原子。")
+            raise ValueError("必须提供 constraint_axis。")
         if constraint_atom is None:
-            raise ValueError("必须提供 constraint_atom 以指定三个原子。")
+            raise ValueError("必须提供 constraint_atom。")
 
         c = constraint_axis.lower()
         if c not in ("x", "y", "z"):
@@ -241,83 +246,30 @@ class Molecule:
         # 主轴方向：i -> j
         ri = self.coords[i - 1]
         rj = self.coords[j - 1]
-        uA = _normalize(_sub(rj, ri))  # 主轴单位向量
-
-        # 约束逻辑
-        A = axis
-        B = ({"x", "y", "z"} - {A, c}).pop()
-
-        # 构造 x̂,ŷ,ẑ
-        xhat = yhat = zhat = None
         rk = self.coords[constraint_atom - 1]
+        u_axis = _normalize(_sub(rj, ri))  # axis 方向
 
-        # 计算 rk 在主轴 A 的正交分量
-        rk_perp = _sub(rk, _scale(uA, _dot(rk, uA)))
+        # 平面法向量
+        normal = _normalize(_cross(_sub(rj, ri), _sub(rk, ri)))
 
-        if _norm(rk_perp) >= 1e-12:
-            uC = _normalize(rk_perp)
-            # 保证 k 在 C 轴为正方向
-            if _dot(rk, uC) < 0:
-                uC = _scale(uC, -1.0)
-        else:
-            # 退化
-            candidates = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-            uC = None
-            for cand in candidates:
-                tmp = _sub(cand, _scale(uA, _dot(cand, uA)))
-                if _norm(tmp) > 1e-12:
-                    uC = _normalize(tmp)
-                    break
-            if uC is None:
-                raise RuntimeError("无法为约束轴选择与主轴正交的方向（数值退化）。")
-
-        # 根据 A、C 组合
-        if A == "x" and c == "y":
-            xhat = uA
-            yhat = uC
-            zhat = _normalize(_cross(xhat, yhat))
-        elif A == "x" and c == "z":
-            xhat = uA
-            zhat = uC
+        # 确定轴
+        if axis == "x":
+            xhat = u_axis
+            zhat = normal
             yhat = _normalize(_cross(zhat, xhat))
-        elif A == "y" and c == "x":
-            yhat = uA
-            xhat = uC
-            zhat = _normalize(_cross(xhat, yhat))
-        elif A == "y" and c == "z":
-            yhat = uA
-            zhat = uC
+        elif axis == "y":
+            yhat = u_axis
+            zhat = normal
             xhat = _normalize(_cross(yhat, zhat))
-        elif A == "z" and c == "x":
-            zhat = uA
-            xhat = uC
+        elif axis == "z":
+            zhat = u_axis
+            xhat = normal
             yhat = _normalize(_cross(zhat, xhat))
-        elif A == "z" and c == "y":
-            zhat = uA
-            yhat = uC
-            xhat = _normalize(_cross(yhat, zhat))
-        else:
-            raise RuntimeError("未预期的 A/C 组合。")
 
-        # 检查
-        def _check_orthonormal(xhat, yhat, zhat, tol=1e-8):
-            if (
-                abs(_dot(xhat, yhat)) > tol
-                or abs(_dot(xhat, zhat)) > tol
-                or abs(_dot(yhat, zhat)) > tol
-            ):
-                raise RuntimeError("构造的坐标轴未能正交（数值不稳定）。")
-            if (
-                abs(_norm(xhat) - 1.0) > tol
-                or abs(_norm(yhat) - 1.0) > tol
-                or abs(_norm(zhat) - 1.0) > tol
-            ):
-                raise RuntimeError("构造的坐标轴未单位化。")
-            triple = _dot(_cross(xhat, yhat), zhat)
-            if triple < 0:
-                zhat[:] = _scale(zhat, -1.0)
-
-        _check_orthonormal(xhat, yhat, zhat)
+        # 右手系
+        triple = _dot(_cross(xhat, yhat), zhat)
+        if triple < 0:
+            zhat = _scale(zhat, -1.0)
 
         # 计算新坐标
         new_coords: List[List[float]] = []
@@ -387,11 +339,32 @@ class Molecule:
                 [a + b for a, b in zip(c1, c2)]
                 for c1, c2 in zip(self.coords, other.coords)
             ]
+            new_leading_ws = [
+                (
+                    self.leading_ws[idx]
+                    if self.symbols[idx].strip()
+                    else other.leading_ws[idx]
+                )
+                for idx in range(self.n_atoms)
+            ]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = new_leading_ws
+            return m
         elif isinstance(other, (int, float)):
             new_coords = [[c + other for c in coord] for coord in self.coords]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = self.leading_ws
+            return m
         else:
             return NotImplemented
-        return self._new_with_coords(new_coords)
 
     def __radd__(self, other):
         return self.__add__(other)
@@ -408,11 +381,32 @@ class Molecule:
                 [a - b for a, b in zip(c1, c2)]
                 for c1, c2 in zip(self.coords, other.coords)
             ]
+            new_leading_ws = [
+                (
+                    self.leading_ws[idx]
+                    if self.symbols[idx].strip()
+                    else other.leading_ws[idx]
+                )
+                for idx in range(self.n_atoms)
+            ]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = new_leading_ws
+            return m
         elif isinstance(other, (int, float)):
             new_coords = [[c - other for c in coord] for coord in self.coords]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = self.leading_ws
+            return m
         else:
             return NotImplemented
-        return self._new_with_coords(new_coords)
 
     def __rsub__(self, other):
         if isinstance(other, (int, float)):
@@ -432,11 +426,32 @@ class Molecule:
                 [a * b for a, b in zip(c1, c2)]
                 for c1, c2 in zip(self.coords, other.coords)
             ]
+            new_leading_ws = [
+                (
+                    self.leading_ws[idx]
+                    if self.symbols[idx].strip()
+                    else other.leading_ws[idx]
+                )
+                for idx in range(self.n_atoms)
+            ]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = new_leading_ws
+            return m
         elif isinstance(other, (int, float)):
             new_coords = [[c * other for c in coord] for coord in self.coords]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = self.leading_ws
+            return m
         else:
             return NotImplemented
-        return self._new_with_coords(new_coords)
 
     def __rmul__(self, other):
         return self.__mul__(other)
@@ -453,11 +468,32 @@ class Molecule:
                 [a / b for a, b in zip(c1, c2)]
                 for c1, c2 in zip(self.coords, other.coords)
             ]
+            new_leading_ws = [
+                (
+                    self.leading_ws[idx]
+                    if self.symbols[idx].strip()
+                    else other.leading_ws[idx]
+                )
+                for idx in range(self.n_atoms)
+            ]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = new_leading_ws
+            return m
         elif isinstance(other, (int, float)):
             new_coords = [[c / other for c in coord] for coord in self.coords]
+            m = Molecule.__new__(Molecule)
+            m.symbols = self.symbols
+            m.coords = new_coords
+            m.n_atoms = self.n_atoms
+            m.precision = self.precision
+            m.leading_ws = self.leading_ws
+            return m
         else:
             return NotImplemented
-        return self._new_with_coords(new_coords)
 
     def __rtruediv__(self, other):
         if isinstance(other, (int, float)):
