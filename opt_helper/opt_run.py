@@ -1,4 +1,5 @@
 import os
+import datetime
 from opt_helper.opt_in import opt_in
 from opt_helper.opt_out import opt_out
 from Molecule import Molecule
@@ -26,24 +27,28 @@ class opt_run:
             )
             in_file.save_to_file(in_file_path)
             print(
-                f"Running optimization step {i}: g09 < {in_file_path} > {out_file_path}"
+                f"[{datetime.datetime.now()}] Running optimization step {i}: g09 < {in_file_path} > {out_file_path}"
             )
             os.system(f"g09 < {in_file_path} > {out_file_path}")
-            print(f"Finished optimization step {i}")
+            print(f"[{datetime.datetime.now()}] Finished optimization step {i}")
             out_file = opt_out(out_file_path)
             if out_file.is_normal():
                 first_freq, vib_mol = out_file.get_first_frequency_info()
-                print(f"First frequency: {first_freq}")
+                print(f"[{datetime.datetime.now()}] First frequency: {first_freq}")
                 if first_freq > 0:
-                    print("Optimization has converged.")
+                    print(f"[{datetime.datetime.now()}] Optimization has converged.")
                     break
                 else:
-                    print("Updating geometry based on first vibrational mode.")
+                    print(
+                        f"[{datetime.datetime.now()}] Updating geometry based on first vibrational mode."
+                    )
                     in_file.molecule = in_file.molecule + update_coefficient * Molecule(
                         vib_mol
                     )
             else:
-                print("Optimization did not terminate normally.")
+                print(
+                    f"[{datetime.datetime.now()}] Optimization did not terminate normally."
+                )
                 in_file.molecule = 0 * in_file.molecule + out_file.final_molecule
         # to do:  more work on in_file
 
