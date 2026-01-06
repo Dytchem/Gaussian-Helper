@@ -18,8 +18,12 @@ class opt_run:
         for i in range(1, epoch + 1):
             if pre_process:
                 pre_process(in_file)
-            in_file_path = os.path.join(in_file_root, f"{file_name}_step{i}.in")
-            out_file_path = os.path.join(out_file_root, f"{file_name}_step{i}.out")
+            in_file_path = os.path.join(
+                in_file_root, f"{file_name}_step{i:0{len(str(epoch))}d}.in"
+            )
+            out_file_path = os.path.join(
+                out_file_root, f"{file_name}_step{i:0{len(str(epoch))}d}.out"
+            )
             in_file.save_to_file(in_file_path)
             print(
                 f"Running optimization step {i}: g09 < {in_file_path} > {out_file_path}"
