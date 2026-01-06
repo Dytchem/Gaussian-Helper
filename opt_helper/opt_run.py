@@ -1,5 +1,6 @@
 import os
 import datetime
+import random
 from opt_helper.opt_in import opt_in
 from opt_helper.opt_out import opt_out
 from Molecule import Molecule
@@ -42,8 +43,9 @@ class opt_run:
                     print(
                         f"[{datetime.datetime.now()}] Updating geometry based on first vibrational mode."
                     )
-                    in_file.molecule = in_file.molecule + update_coefficient * Molecule(
-                        vib_mol
+                    sign = random.choice([1, -1])
+                    in_file.molecule = (
+                        in_file.molecule + sign * update_coefficient * Molecule(vib_mol)
                     )
             else:
                 print(
