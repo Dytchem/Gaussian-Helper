@@ -1,4 +1,3 @@
-
 import re
 import math
 import random
@@ -10,16 +9,19 @@ from typing import List, Tuple, Optional
 # 基础向量运算（纯 Python）
 # =========================
 
+
 def _dot(a: List[float], b: List[float]) -> float:
     """点乘 a·b"""
-    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 
 def _cross(a: List[float], b: List[float]) -> List[float]:
     """叉乘 a×b（右手法则）"""
-    return [a[1]*b[2] - a[2]*b[1],
-            a[2]*b[0] - a[0]*b[2],
-            a[0]*b[1] - a[1]*b[0]]
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 
 
 def _norm(v: List[float]) -> float:
@@ -32,22 +34,22 @@ def _normalize(v: List[float], eps: float = 1e-12) -> List[float]:
     n = _norm(v)
     if n < eps:
         raise ValueError("规范化失败：向量长度过小（接近零）。")
-    return [v[0]/n, v[1]/n, v[2]/n]
+    return [v[0] / n, v[1] / n, v[2] / n]
 
 
 def _sub(a: List[float], b: List[float]) -> List[float]:
     """向量相减 a - b"""
-    return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 
 
 def _add(a: List[float], b: List[float]) -> List[float]:
     """向量相加 a + b"""
-    return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]
+    return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 
 
 def _scale(v: List[float], s: float) -> List[float]:
     """标量乘法 s * v"""
-    return [v[0]*s, v[1]*s, v[2]*s]
+    return [v[0] * s, v[1] * s, v[2] * s]
 
 
 def _random_noncollinear(seed: Optional[int] = None) -> List[float]:
@@ -66,22 +68,24 @@ def _random_noncollinear(seed: Optional[int] = None) -> List[float]:
 # Molecule 类
 # =========================
 
+
 class Molecule:
     """
     管理分子坐标的类。支持：
     - 从文本格式构造（固定原子数、符号与输出精度）。
     - 输出为同样风格的字符串（保留原始前导空白、按列对齐）。
     - 坐标系重建（以 i->j 为新的 x/y/z 轴；可约束某原子落在指定平面并为指定轴的正方向）。
-    - add 操作（逐元素相加，返回新对象）。
+    - 平移、旋转等几何变换。
+    - 代数运算（+、-、*、/）支持逐元素运算，仅在有原子符号的位置符号匹配时允许 Molecule 间的运算（空符号忽略）。
 
     所有变换方法都返回新的 Molecule 对象（原对象不变，便于链式操作与回溯）。
     """
 
     _line_regex = re.compile(
-        r'^(?P<lead>\s*)(?P<sym>[A-Za-z]*)\s*'
-        r'(?P<x>[+-]?\d+(?:\.\d+)?)\s+'
-        r'(?P<y>[+-]?\d+(?:\.\d+)?)\s+'
-        r'(?P<z>[+-]?\d+(?:\.\d+)?)\s*$'
+        r"^(?P<lead>\s*)(?P<sym>[A-Za-z]*)\s*"
+        r"(?P<x>[+-]?\d+(?:\.\d+)?)\s+"
+        r"(?P<y>[+-]?\d+(?:\.\d+)?)\s+"
+        r"(?P<z>[+-]?\d+(?:\.\d+)?)\s*$"
     )
 
     def __init__(self, text: str):
@@ -122,7 +126,12 @@ class Molecule:
                     return len(s.split(".")[1])
                 return 0
 
-            dec_places_max = max(dec_places_max, _dec_places(x_str), _dec_places(y_str), _dec_places(z_str))
+            dec_places_max = max(
+                dec_places_max,
+                _dec_places(x_str),
+                _dec_places(y_str),
+                _dec_places(z_str),
+            )
 
             x = float(x_str)
             y = float(y_str)
@@ -135,7 +144,9 @@ class Molecule:
         self.symbols: List[str] = symbols
         self.coords: List[List[float]] = coords
         self.n_atoms: int = len(coords)
-        self.precision: int = dec_places_max if dec_places_max > 0 else 6  # 兜底至少 6 位小数
+        self.precision: int = (
+            dec_places_max if dec_places_max > 0 else 6
+        )  # 兜底至少 6 位小数
         self.leading_ws: List[str] = leading_ws
 
     # === 辅助：从现有对象创建新对象（复制元数据） ===
@@ -153,11 +164,14 @@ class Molecule:
         为了整齐，会按列对齐：先格式化到固定小数位，再按每列的最长宽度右对齐。
         """
         # 先把每个数格式化为固定小数位字符串
-        fmt_vals = [[
-            f"{row[0]:.{self.precision}f}",
-            f"{row[1]:.{self.precision}f}",
-            f"{row[2]:.{self.precision}f}"
-        ] for row in self.coords]
+        fmt_vals = [
+            [
+                f"{row[0]:.{self.precision}f}",
+                f"{row[1]:.{self.precision}f}",
+                f"{row[2]:.{self.precision}f}",
+            ]
+            for row in self.coords
+        ]
 
         # 找到每列的最大字符串长度用于对齐
         col_widths = [max(len(v[i]) for v in fmt_vals) for i in range(3)]
@@ -172,7 +186,7 @@ class Molecule:
             x_s = x_s.rjust(col_widths[0])
             y_s = y_s.rjust(col_widths[1])
             z_s = z_s.rjust(col_widths[2])
-            if sym.strip() == '':
+            if sym.strip() == "":
                 line = f"{lead}{x_s}   {y_s}   {z_s}"
             else:
                 line = f"{lead}{sym}  {x_s}   {y_s}   {z_s}"
@@ -187,20 +201,18 @@ class Molecule:
         axis: str = "x",
         constraint_atom: Optional[int] = None,
         constraint_axis: Optional[str] = None,
-        random_seed: Optional[int] = None
+        random_seed: Optional[int] = None,
     ) -> "Molecule":
         """
         将 i -> j 定义为新的 axis（'x' / 'y' / 'z'）轴正方向。
-        若提供 constraint_atom=k 与 constraint_axis=c（c ∈ {'x','y','z'} 且 c != axis），则：
-          - 原子 k 位于由 axis 与 c 张成的平面（即在剩余那一轴方向上坐标 = 0）；
-          - 同时原子 k 在新坐标的 c 分量为正（若几何上该分量本来为 0，则保留为 0）。
-
-        未提供约束时，随机选择其余轴方向（可用 random_seed 控制复现）。
+        必须提供 constraint_atom=k 与 constraint_axis=c（c ∈ {'x','y','z'} 且 c != axis），
+        原子 k 位于由 axis 与 c 张成的平面（即在剩余那一轴方向上坐标 = 0），
+        同时原子 k 在新坐标的 c 分量为正（若几何上该分量本来为 0，则保留为 0）。
 
         说明：
         - 本方法只改变坐标系方向，不做平移（原坐标原点保持不变）。
         - 新坐标计算采用点乘投影：r' = [r·x̂, r·ŷ, r·ẑ]。
-        - i、j、constraint_atom 为 1-based 下标。
+        - i、j、constraint_atom 为 1-based 下标，且互不相同。
         """
         axis = axis.lower()
         if axis not in ("x", "y", "z"):
@@ -211,146 +223,103 @@ class Molecule:
         if i == j:
             raise ValueError("i 与 j 不可相同。")
 
+        if constraint_axis is None:
+            raise ValueError("必须提供 constraint_axis 以指定三个原子。")
+        if constraint_atom is None:
+            raise ValueError("必须提供 constraint_atom 以指定三个原子。")
+
+        c = constraint_axis.lower()
+        if c not in ("x", "y", "z"):
+            raise ValueError("constraint_axis 必须是 'x'、'y' 或 'z'。")
+        if c == axis:
+            raise ValueError("constraint_axis 不能与主轴 axis 相同。")
+        if not (1 <= constraint_atom <= self.n_atoms):
+            raise ValueError("constraint_atom 越界。")
+        if constraint_atom == i or constraint_atom == j:
+            raise ValueError("constraint_atom 不能与 i 或 j 相同。")
+
         # 主轴方向：i -> j
-        ri = self.coords[i-1]
-        rj = self.coords[j-1]
+        ri = self.coords[i - 1]
+        rj = self.coords[j - 1]
         uA = _normalize(_sub(rj, ri))  # 主轴单位向量
 
-        # 处理约束逻辑
-        if constraint_axis is not None:
-            c = constraint_axis.lower()
-            if c not in ("x", "y", "z"):
-                raise ValueError("constraint_axis 必须是 'x'、'y' 或 'z'。")
-            if c == axis:
-                raise ValueError("constraint_axis 不能与主轴 axis 相同。")
-            if constraint_atom is None:
-                raise ValueError("提供了 constraint_axis，但缺少 constraint_atom。")
-            if not (1 <= constraint_atom <= self.n_atoms):
-                raise ValueError("constraint_atom 越界。")
-        else:
-            c = None  # 无约束
-
-        # 将 (axis, c) 两轴张成的平面作为约束平面；剩余轴为 B（该轴坐标需为 0）
-        # 例如 axis='y', c='z' -> 平面为 yz；剩余轴 B='x'
-        axes = ("x", "y", "z")
-        # 按选择确定 A(主轴)、C(约束指定轴)、B(剩余轴)
+        # 约束逻辑
         A = axis
-        C = c
-        B = None
-        if C is not None:
-            B = ({*axes} - {A, C}).pop()
+        B = ({"x", "y", "z"} - {A, c}).pop()
 
-        # 依据 A、C 构造 x̂,ŷ,ẑ（三者正交且右手系，满足约束）
+        # 构造 x̂,ŷ,ẑ
         xhat = yhat = zhat = None
+        rk = self.coords[constraint_atom - 1]
 
-        def build_without_constraint():
-            """无约束：从随机种子构造其余两轴，确保右手系。"""
-            seed = _random_noncollinear(random_seed)
-            # second 轴：在与主轴正交的子空间内从种子正交化
-            second = _sub(seed, _scale(uA, _dot(seed, uA)))
-            if _norm(second) < 1e-12:
-                # 兜底选择与主轴不共线的固定方向
-                candidates = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-                for cand in candidates:
-                    second = _sub(cand, _scale(uA, _dot(cand, uA)))
-                    if _norm(second) > 1e-12:
-                        break
-            second = _normalize(second)
-            # 根据主轴是哪一个，给 second 指定到合适的轴位，再由叉乘补全第三轴
-            if A == "x":
-                nonlocal xhat, yhat, zhat
-                xhat = uA
-                yhat = second
-                zhat = _normalize(_cross(xhat, yhat))
-            elif A == "y":
-                yhat = uA
-                xhat = second
-                zhat = _normalize(_cross(xhat, yhat))
-            else:  # A == "z"
-                zhat = uA
-                yhat = second
-                xhat = _normalize(_cross(yhat, zhat))
+        # 计算 rk 在主轴 A 的正交分量
+        rk_perp = _sub(rk, _scale(uA, _dot(rk, uA)))
 
-        def build_with_constraint():
-            """有约束：将 k 放在由 A 与 C 张成的平面，并令 k 在 C 轴上为正。"""
-            nonlocal xhat, yhat, zhat
-            rk = self.coords[constraint_atom - 1]
-
-            # 计算 rk 在主轴 A 的正交分量（用于定义 C 轴方向）
-            # rk_perp = rk - (rk·uA) uA
-            rk_perp = _sub(rk, _scale(uA, _dot(rk, uA)))
-
-            if _norm(rk_perp) >= 1e-12:
-                uC = _normalize(rk_perp)
-                # 保证 k 在 C 轴为正方向：若投影为负则翻转 C 轴
-                if _dot(rk, uC) < 0:
-                    uC = _scale(uC, -1.0)
-            else:
-                # 退化：rk 与主轴 A 共线（或几乎共线）
-                # 此时 k 自然位于任何包含 A 的平面；在 C 轴上的分量为 0，无需强制正向。
-                # 这里选择一个与 A 不共线的固定向量，并正交化得到 uC。
-                candidates = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-                uC = None
-                for cand in candidates:
-                    tmp = _sub(cand, _scale(uA, _dot(cand, uA)))
-                    if _norm(tmp) > 1e-12:
-                        uC = _normalize(tmp)
-                        break
-                if uC is None:
-                    raise RuntimeError("无法为约束轴选择与主轴正交的方向（数值退化）。")
-
-            # 根据 A、C 的组合，确定三轴，并确保右手系与正交性：
-            if A == "x" and C == "y":
-                xhat = uA
-                yhat = uC
-                zhat = _normalize(_cross(xhat, yhat))  # z = x × y
-            elif A == "x" and C == "z":
-                xhat = uA
-                zhat = uC
-                yhat = _normalize(_cross(zhat, xhat))  # 保证 z = x × y
-            elif A == "y" and C == "x":
-                yhat = uA
-                xhat = uC
-                zhat = _normalize(_cross(xhat, yhat))  # z = x × y
-            elif A == "y" and C == "z":
-                yhat = uA
-                zhat = uC
-                xhat = _normalize(_cross(yhat, zhat))  # z = x × y
-            elif A == "z" and C == "x":
-                zhat = uA
-                xhat = uC
-                yhat = _normalize(_cross(zhat, xhat))  # z = x × y
-            elif A == "z" and C == "y":
-                zhat = uA
-                yhat = uC
-                xhat = _normalize(_cross(yhat, zhat))  # z = x × y
-            else:
-                raise RuntimeError("未预期的 A/C 组合。")
-
-            # 到此：k 的新坐标满足在 B 轴为 0（因为 rk 属于 span(uA, uC)），
-            # 且在 C 轴方向上为正（非退化时保证；退化时为 0）。
-
-        # 执行构造
-        if C is None:
-            build_without_constraint()
+        if _norm(rk_perp) >= 1e-12:
+            uC = _normalize(rk_perp)
+            # 保证 k 在 C 轴为正方向
+            if _dot(rk, uC) < 0:
+                uC = _scale(uC, -1.0)
         else:
-            build_with_constraint()
+            # 退化
+            candidates = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+            uC = None
+            for cand in candidates:
+                tmp = _sub(cand, _scale(uA, _dot(cand, uA)))
+                if _norm(tmp) > 1e-12:
+                    uC = _normalize(tmp)
+                    break
+            if uC is None:
+                raise RuntimeError("无法为约束轴选择与主轴正交的方向（数值退化）。")
 
-        # 数值健壮性检查：三轴需两两正交且单位化（容忍极小误差）
+        # 根据 A、C 组合
+        if A == "x" and c == "y":
+            xhat = uA
+            yhat = uC
+            zhat = _normalize(_cross(xhat, yhat))
+        elif A == "x" and c == "z":
+            xhat = uA
+            zhat = uC
+            yhat = _normalize(_cross(zhat, xhat))
+        elif A == "y" and c == "x":
+            yhat = uA
+            xhat = uC
+            zhat = _normalize(_cross(xhat, yhat))
+        elif A == "y" and c == "z":
+            yhat = uA
+            zhat = uC
+            xhat = _normalize(_cross(yhat, zhat))
+        elif A == "z" and c == "x":
+            zhat = uA
+            xhat = uC
+            yhat = _normalize(_cross(zhat, xhat))
+        elif A == "z" and c == "y":
+            zhat = uA
+            yhat = uC
+            xhat = _normalize(_cross(yhat, zhat))
+        else:
+            raise RuntimeError("未预期的 A/C 组合。")
+
+        # 检查
         def _check_orthonormal(xhat, yhat, zhat, tol=1e-8):
-            if abs(_dot(xhat, yhat)) > tol or abs(_dot(xhat, zhat)) > tol or abs(_dot(yhat, zhat)) > tol:
+            if (
+                abs(_dot(xhat, yhat)) > tol
+                or abs(_dot(xhat, zhat)) > tol
+                or abs(_dot(yhat, zhat)) > tol
+            ):
                 raise RuntimeError("构造的坐标轴未能正交（数值不稳定）。")
-            if abs(_norm(xhat) - 1.0) > tol or abs(_norm(yhat) - 1.0) > tol or abs(_norm(zhat) - 1.0) > tol:
+            if (
+                abs(_norm(xhat) - 1.0) > tol
+                or abs(_norm(yhat) - 1.0) > tol
+                or abs(_norm(zhat) - 1.0) > tol
+            ):
                 raise RuntimeError("构造的坐标轴未单位化。")
-            # 右手性检查：要求 (x × y) 与 z 同向
             triple = _dot(_cross(xhat, yhat), zhat)
             if triple < 0:
-                # 若出现负向，翻转 z 轴（最不影响用户指定的 A/C 取向）
                 zhat[:] = _scale(zhat, -1.0)
 
         _check_orthonormal(xhat, yhat, zhat)
 
-        # 计算新坐标：r' = [r·x̂, r·ŷ, r·ẑ]
+        # 计算新坐标
         new_coords: List[List[float]] = []
         for r in self.coords:
             new_coords.append([_dot(r, xhat), _dot(r, yhat), _dot(r, zhat)])
@@ -363,7 +332,9 @@ class Molecule:
         delta = [dx, dy, dz]
         return self._new_with_coords([_add(r, delta) for r in self.coords])
 
-    def rotate_about_axes(self, ax: float = 0.0, ay: float = 0.0, az: float = 0.0) -> "Molecule":
+    def rotate_about_axes(
+        self, ax: float = 0.0, ay: float = 0.0, az: float = 0.0
+    ) -> "Molecule":
         """
         以当前坐标系的 x,y,z 轴依次旋转（右手法则，单位：弧度），返回新对象。
         """
@@ -372,34 +343,22 @@ class Molecule:
         sz, cz = math.sin(az), math.cos(az)
 
         # 旋转矩阵 Rz * Ry * Rx
-        Rx = [
-            [1, 0, 0],
-            [0, cx, -sx],
-            [0, sx, cx]
-        ]
-        Ry = [
-            [cy, 0, sy],
-            [0, 1, 0],
-            [-sy, 0, cy]
-        ]
-        Rz = [
-            [cz, -sz, 0],
-            [sz, cz, 0],
-            [0, 0, 1]
-        ]
+        Rx = [[1, 0, 0], [0, cx, -sx], [0, sx, cx]]
+        Ry = [[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]]
+        Rz = [[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]]
 
         def matmul3(A, B):
             return [
                 [
-                    A[0][0]*B[0][j] + A[0][1]*B[1][j] + A[0][2]*B[2][j]
+                    A[0][0] * B[0][j] + A[0][1] * B[1][j] + A[0][2] * B[2][j]
                     for j in range(3)
                 ],
                 [
-                    A[1][0]*B[0][j] + A[1][1]*B[1][j] + A[1][2]*B[2][j]
+                    A[1][0] * B[0][j] + A[1][1] * B[1][j] + A[1][2] * B[2][j]
                     for j in range(3)
                 ],
                 [
-                    A[2][0]*B[0][j] + A[2][1]*B[1][j] + A[2][2]*B[2][j]
+                    A[2][0] * B[0][j] + A[2][1] * B[1][j] + A[2][2] * B[2][j]
                     for j in range(3)
                 ],
             ]
@@ -408,9 +367,9 @@ class Molecule:
 
         def apply_R(r):
             return [
-                r[0]*R[0][0] + r[1]*R[0][1] + r[2]*R[0][2],
-                r[0]*R[1][0] + r[1]*R[1][1] + r[2]*R[1][2],
-                r[0]*R[2][0] + r[1]*R[2][1] + r[2]*R[2][2],
+                r[0] * R[0][0] + r[1] * R[0][1] + r[2] * R[0][2],
+                r[0] * R[1][0] + r[1] * R[1][1] + r[2] * R[1][2],
+                r[0] * R[2][0] + r[1] * R[2][1] + r[2] * R[2][2],
             ]
 
         return self._new_with_coords([apply_R(r) for r in self.coords])
@@ -420,7 +379,14 @@ class Molecule:
         if isinstance(other, Molecule):
             if self.n_atoms != other.n_atoms:
                 raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
-            new_coords = [[a + b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+            # 检查原子符号：忽略空符号，只比较非空符号
+            for s1, s2 in zip(self.symbols, other.symbols):
+                if s1.strip() and s2.strip() and s1 != s2:
+                    raise ValueError("原子符号不匹配。")
+            new_coords = [
+                [a + b for a, b in zip(c1, c2)]
+                for c1, c2 in zip(self.coords, other.coords)
+            ]
         elif isinstance(other, (int, float)):
             new_coords = [[c + other for c in coord] for coord in self.coords]
         else:
@@ -434,7 +400,14 @@ class Molecule:
         if isinstance(other, Molecule):
             if self.n_atoms != other.n_atoms:
                 raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
-            new_coords = [[a - b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+            # 检查原子符号：忽略空符号，只比较非空符号
+            for s1, s2 in zip(self.symbols, other.symbols):
+                if s1.strip() and s2.strip() and s1 != s2:
+                    raise ValueError("原子符号不匹配。")
+            new_coords = [
+                [a - b for a, b in zip(c1, c2)]
+                for c1, c2 in zip(self.coords, other.coords)
+            ]
         elif isinstance(other, (int, float)):
             new_coords = [[c - other for c in coord] for coord in self.coords]
         else:
@@ -451,7 +424,14 @@ class Molecule:
         if isinstance(other, Molecule):
             if self.n_atoms != other.n_atoms:
                 raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
-            new_coords = [[a * b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+            # 检查原子符号：忽略空符号，只比较非空符号
+            for s1, s2 in zip(self.symbols, other.symbols):
+                if s1.strip() and s2.strip() and s1 != s2:
+                    raise ValueError("原子符号不匹配。")
+            new_coords = [
+                [a * b for a, b in zip(c1, c2)]
+                for c1, c2 in zip(self.coords, other.coords)
+            ]
         elif isinstance(other, (int, float)):
             new_coords = [[c * other for c in coord] for coord in self.coords]
         else:
@@ -465,7 +445,14 @@ class Molecule:
         if isinstance(other, Molecule):
             if self.n_atoms != other.n_atoms:
                 raise ValueError(f"原子数不一致：{self.n_atoms} vs {other.n_atoms}")
-            new_coords = [[a / b for a, b in zip(c1, c2)] for c1, c2 in zip(self.coords, other.coords)]
+            # 检查原子符号：忽略空符号，只比较非空符号
+            for s1, s2 in zip(self.symbols, other.symbols):
+                if s1.strip() and s2.strip() and s1 != s2:
+                    raise ValueError("原子符号不匹配。")
+            new_coords = [
+                [a / b for a, b in zip(c1, c2)]
+                for c1, c2 in zip(self.coords, other.coords)
+            ]
         elif isinstance(other, (int, float)):
             new_coords = [[c / other for c in coord] for coord in self.coords]
         else:
