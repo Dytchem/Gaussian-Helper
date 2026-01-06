@@ -90,9 +90,9 @@ class Molecule:
 
     _line_regex = re.compile(
         r"^(?P<lead>\s*)(?P<sym>[A-Za-z]*)\s*"
-        r"(?P<x>[+-]?\d+(?:\.\d+)?)\s+"
-        r"(?P<y>[+-]?\d+(?:\.\d+)?)\s+"
-        r"(?P<z>[+-]?\d+(?:\.\d+)?)\s*$"
+        r"(?P<x>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s+"
+        r"(?P<y>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s+"
+        r"(?P<z>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$"
     )
 
     def __init__(self, text: str):
@@ -269,7 +269,7 @@ class Molecule:
         # 右手系
         triple = _dot(_cross(xhat, yhat), zhat)
         if triple < 0:
-            zhat = _scale(zhat, -1.0)
+            zhat = [-z for z in zhat]
 
         # 计算新坐标
         new_coords: List[List[float]] = []
