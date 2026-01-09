@@ -3,7 +3,8 @@ import datetime
 import random
 import sys
 
-sys.path.append("..")
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.dirname(__file__))
 import argparse
 from opt_in import opt_in
 from opt_out import opt_out

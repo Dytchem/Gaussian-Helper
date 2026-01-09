@@ -210,14 +210,18 @@ class Molecule:
         random_seed: Optional[int] = None,
     ) -> "Molecule":
         """
-        将 i -> j 定义为新的 axis（'x' / 'y' / 'z'）轴正方向。
-        必须提供 constraint_atom=k 与 constraint_axis=c（c ∈ {'x','y','z'} 且 c != axis），
-        使用 i,j,k 平面法向量确定剩余轴方向。
+        重新定向坐标系。
 
-        说明：
-        - 本方法只改变坐标系方向，不做平移（原坐标原点保持不变）。
-        - 新坐标计算采用点乘投影：r' = [r·x̂, r·ŷ, r·ẑ]。
-        - i、j、constraint_atom 为 1-based 下标，且互不相同。
+        参数：
+        - i, j: 原子索引 (1-based)，i->j 定义主轴方向。
+        - axis: 主轴 ('x', 'y', 'z')。
+        - constraint_atom: 约束原子索引 (1-based)。
+        - constraint_axis: 法向量轴 ('x', 'y', 'z')，不能与 axis 相同。
+
+        逻辑：
+        - 主轴 (axis) 设为 i->j 方向。
+        - 法向量轴 (constraint_axis) 设为 i,j,constraint_atom 平面的法向量。
+        - 第三个轴通过右手系计算。
         """
         axis = axis.lower()
         if axis not in ("x", "y", "z"):
@@ -243,30 +247,40 @@ class Molecule:
         if constraint_atom == i or constraint_atom == j:
             raise ValueError("constraint_atom 不能与 i 或 j 相同。")
 
-        # 主轴方向：i -> j
+        # 计算向量
         ri = self.coords[i - 1]
         rj = self.coords[j - 1]
         rk = self.coords[constraint_atom - 1]
-        u_axis = _normalize(_sub(rj, ri))  # axis 方向
+        u_main = _normalize(_sub(rj, ri))  # 主轴方向
+        normal = _normalize(_cross(_sub(rj, ri), _sub(rk, ri)))  # 法向量
 
-        # 平面法向量
-        normal = _normalize(_cross(_sub(rj, ri), _sub(rk, ri)))
-
-        # 确定轴
+        # 设置轴
         if axis == "x":
-            xhat = u_axis
-            zhat = normal
-            yhat = _normalize(_cross(zhat, xhat))
+            xhat = u_main
+            if c == "y":
+                yhat = normal
+                zhat = _normalize(_cross(xhat, yhat))
+            elif c == "z":
+                zhat = normal
+                yhat = _normalize(_cross(zhat, xhat))  # z × x = y (右手系)
         elif axis == "y":
-            yhat = u_axis
-            zhat = normal
-            xhat = _normalize(_cross(yhat, zhat))
+            yhat = u_main
+            if c == "x":
+                xhat = normal
+                zhat = _normalize(_cross(xhat, yhat))
+            elif c == "z":
+                zhat = normal
+                xhat = _normalize(_cross(yhat, zhat))  # y × z = x (右手系)
         elif axis == "z":
-            zhat = u_axis
-            xhat = normal
-            yhat = _normalize(_cross(zhat, xhat))
+            zhat = u_main
+            if c == "x":
+                xhat = normal
+                yhat = _normalize(_cross(zhat, xhat))  # z × x = y (右手系)
+            elif c == "y":
+                yhat = normal
+                xhat = _normalize(_cross(yhat, zhat))  # y × z = x (右手系)
 
-        # 右手系
+        # 确保右手系
         triple = _dot(_cross(xhat, yhat), zhat)
         if triple < 0:
             zhat = [-z for z in zhat]
