@@ -20,6 +20,7 @@ class opt_run:
         update_coefficient=1.0,
         pre_process=None,
     ):
+        self.converged_once = False
         in_file = opt_in(os.path.join(in_file_root, file_name + ".in"))
         for i in range(1, epoch + 1):
             if pre_process:
@@ -41,9 +42,18 @@ class opt_run:
                 first_freq, vib_mol = out_file.get_first_frequency_info()
                 print(f"[{datetime.datetime.now()}] First frequency: {first_freq}")
                 if first_freq > 0:
-                    print(f"[{datetime.datetime.now()}] Optimization has converged.")
-                    break
+                    if self.converged_once:
+                        print(
+                            f"[{datetime.datetime.now()}] Optimization has converged twice in a row."
+                        )
+                        break
+                    else:
+                        self.converged_once = True
+                        print(
+                            f"[{datetime.datetime.now()}] Optimization has converged once, running one more step."
+                        )
                 else:
+                    self.converged_once = False
                     print(
                         f"[{datetime.datetime.now()}] Updating geometry based on first vibrational mode."
                     )
@@ -59,11 +69,15 @@ class opt_run:
         # to do:  more work on in_file
 
     @staticmethod
-    def default_pre_process(in_file):
+    def default_pre_process(
+        in_file, i=1, j=2, axis="x", constraint_atom=3, constraint_axis="y"
+    ):
         """
-        默认前处理函数：重新定向坐标系，使原子 1->2 为 x 轴，原子 3 在 xz 平面。
+        默认前处理函数：重新定向坐标系，使原子 i->j 为指定的 axis，原子 constraint_atom 在 axis-constraint_axis 平面。
         """
-        in_file.molecule = in_file.molecule.reframe(1, 2, "x", 3, "z")
+        in_file.molecule = in_file.molecule.reframe(
+            i, j, axis, constraint_atom, constraint_axis
+        )
 
 
 if __name__ == "__main__":
@@ -85,10 +99,43 @@ if __name__ == "__main__":
         action="store_true",
         help="Use default preprocessing function",
     )
+    parser.add_argument(
+        "--reframe_params",
+        type=str,
+        default="1 2 x 3 y",
+        help='Reframe parameters: "i j axis constraint_atom constraint_axis" (default: "1 2 x 3 y")',
+    )
 
     args = parser.parse_args()
 
-    pre_process = opt_run.default_pre_process if args.use_default_preprocess else None
+    if args.use_default_preprocess:
+        # Parse reframe_params
+        try:
+            params = args.reframe_params.split()
+            if len(params) != 5:
+                raise ValueError("reframe_params must have 5 values")
+            i, j, axis, constraint_atom, constraint_axis = params
+            i = int(i)
+            j = int(j)
+            axis = axis.lower()
+            constraint_atom = int(constraint_atom)
+            constraint_axis = constraint_axis.lower()
+            if axis not in ["x", "y", "z"] or constraint_axis not in ["x", "y", "z"]:
+                raise ValueError("axis and constraint_axis must be x, y, or z")
+        except ValueError as e:
+            print(f"Error parsing reframe_params: {e}")
+            sys.exit(1)
+
+        pre_process = lambda in_file: opt_run.default_pre_process(
+            in_file,
+            i=i,
+            j=j,
+            axis=axis,
+            constraint_atom=constraint_atom,
+            constraint_axis=constraint_axis,
+        )
+    else:
+        pre_process = None
 
     opt_run(
         file_name=args.file_name,
